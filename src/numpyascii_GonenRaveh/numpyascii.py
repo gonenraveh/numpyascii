@@ -3,9 +3,11 @@ import numpy as np, sys, os
 def np_validate_structure(rows:list):
     def columns(row:str):
         column_length = 0
+        column_start = 0
         ret=[]
-        for j in range(len(row)):
-            if row[j]=='+' or row[j]=='|':
+        srow = row.strip()
+        for j in range(len(srow)):
+            if srow[j]=='+' or srow[j]=='|':
                 if 0==column_length:
                     column_start=j+1
                 else:
@@ -13,12 +15,11 @@ def np_validate_structure(rows:list):
                     ret.append(found_cols)
                     column_start=j+1
                     column_length=0
-            elif row[j] in cell_syntax:
+            elif srow[j] in cell_syntax:
                 column_length += 1 
             else:
-                print('np compiler syntax error:\n-- unknown character {}\n-- at column = {} row={} out of {} rows'.format(row[j], j, i, n_rows-1))
-                return False
-            
+                print('np compiler syntax error:\n-- unknown character {}\n-- at column = {} row={} out of {} rows'.format(srow[j], j, i, n_rows-1))
+                return False            
         #
         return ret
         
@@ -30,19 +31,21 @@ def np_validate_structure(rows:list):
     cols = []
     for i in range(n_rows):
         row = rows[i]
+        srow = row.strip() # algorithm improvement
         if row.find('/') >= 0:
             n_3d_rows += 1
             rows_types.append('depth')
-        elif row[0]=='+' or row[0]=='|':
+        elif srow[0]=='+' or srow[0]=='|':
             rows_types.append('vertical-spacer')
             cols_per_row = columns(row)
-            if 0==len(cols): cols.append(cols_per_row)
+            if 0==len(cols): 
+                cols.append(cols_per_row)
             else:
                 if cols_per_row != cols[0]:
                     print('np compiler syntax error:\n-- columns do not match {}\n-- vs. {}.\n-- at row={} out of {} rows'.format(cols_per_row, cols[0], i, n_rows-1))
                     return False
                     
-        if row[0]=='|':
+        if srow[0]=='|':
             n_data_rows += 1
             rows_types.append('data')
             
@@ -143,10 +146,11 @@ def npnu(data:tuple):
         count_depth = 0
         for i in range(n_rows):
             row = rows[i]
-            if len(row)>0:
-                if '|' == row[0]: 
+            srow = row.strip() # algorithm improvement
+            if len(srow)>0:
+                if '|' == srow[0]: 
                     count_rows+=1
-                elif row.find('/') >= 0 and row[0]!='+':  # 3d case
+                elif srow.find('/') >= 0 and srow[0]!='+':  # 3d case
                     count_depth += 1
         #
         if 0==count_depth: 
@@ -155,14 +159,16 @@ def npnu(data:tuple):
         count_columns = 0        
         for i in range(n_rows-1):
             row = rows[i]
+            srow = row.strip() # algorithm improvement
             next_row = rows[i+1]
-            if '|'==row[0]:  # 2d case
-                count_bars=0
-                for ci in range(len(row)):
-                    if '|'==row[ci] and next_row[ci] == '+': 
-                        count_bars+=1
-                count_columns = count_bars-1
-                break
+            if len(srow)>0:
+                if '|'==srow[0]:  # 2d case
+                    count_bars=0
+                    for ci in range(len(row)):
+                        if '|'==row[ci] and next_row[ci] == '+': 
+                            count_bars+=1
+                    count_columns = count_bars-1
+                    break
         return count_rows, count_columns, count_depth
 
 def np2(x:str):
@@ -207,10 +213,13 @@ def np2(x:str):
     return np.zeros((rows, columns, depth))
 
     
-def np3(x:str):
+def np3(x:str, *args):
     '''
     Support 2D, 3D and 3D with columns=1 textual matrices. return numpy matrix.
-    
+    Matrix will be filled with zeros.
+    If you pass another parameter named:
+    'arange' - the matrix will be filled with np.arange() counting values...
+
     Example:             Format: must use only <int> + - / . | characters
     
        +---+--------+
@@ -247,6 +256,9 @@ def np3(x:str):
         rows, columns, depth = npnu(npn(_rows))
         y = np.zeros((rows, columns, depth))
     #
+    for arg in args:
+        if isinstance(arg, str) and arg.lower() == 'arange':
+            y = np.arange(0, y.size).reshape((rows, columns, depth))
     return y
     
 def selftest():
@@ -383,7 +395,7 @@ def selftest():
     |  |  |  |  |  |  |  | /
     +--+--+--+--+--+--+--+
     ''')
-    print('computed shape=',x.shape, 'SUCCESS=', x.shape==(4,7,2))
+    print('computed 3D shape=',x.shape, 'SUCCESS=', x.shape==(4,7,2))
 
     # Test errors
     x = np3(
@@ -417,7 +429,7 @@ def selftest():
     +---+---+---+
     | 0 |...| 28|
     +---+---+---+
-     ...|   |   |
+    |...|   |   |
     +---+---+---+
     |101|   |   |
     +---+---+---+
@@ -430,7 +442,7 @@ def selftest():
     +---+----+---+
     | 0 |... | 28|
     +---+----+---+
-     ...|    |   |
+    |...|    |   |
     +---+----+---+
     |101|    |   |
     +---+----+---+
@@ -535,6 +547,46 @@ def selftest():
     print(npp(7,3))
     print(np3(npp(7,3,9)).shape)
     print(np3(npp(7,3)).shape)
+
+    x = np3(
+    ''' 
+          +--------------------+
+         /                    /|
+        +--------------------+ |
+       /I use explicit depth/  |
+      +--------------------+   |
+     /  here depth=three  /    |
+    +--+--+--+--+--+--+--+     |
+    |  |  |  |  |  |  |  |     |
+    +--+--+--+--+--+--+--+     |
+    |  |  |  |  |  |  |  |     /
+    +--+--+--+--+--+--+--+    /
+    |  |  |  |  |  |  |  |   /
+    +--+--+--+--+--+--+--+  /
+    |  |  |  |  |  |  |  | /
+    +--+--+--+--+--+--+--+
+    ''', 'arange')
+    print('computed shape=',x.shape, 'SUCCESS=', x.shape==(4,7,3))
+    print(f'x={x}')
+
+    x = np3(
+    ''' 
+         +--------------------+
+        /                    /|
+       /                    / |
+      /I use explicit depth/  |
+     /  here depth=4      /   |
+    +--+--+--+--+--+--+--+    |
+    |  |  |  |  |  |  |  |    |
+    +--+--+--+--+--+--+--+    |
+    |  |  |  |  |  |  |  |    /
+    +--+--+--+--+--+--+--+   /
+    |  |  |  |  |  |  |  |  /
+    +--+--+--+--+--+--+--+ /
+    |  |  |  |  |  |  |  |/
+    +--+--+--+--+--+--+--+
+    ''')
+    print('computed shape=',x.shape, 'SUCCESS=', x.shape==(4,7,4))
 
 if __name__ == '__main__':
     selftest()
